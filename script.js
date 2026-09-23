@@ -6,7 +6,7 @@
    - View switching (Command Center / Methodology)
    - Theme switching
    - Command rendering, search, category filtering
-   - Add-command modal -> localStorage
+   - Add/Edit ALL commands -> localStorage
    - Copy-to-clipboard
    - Methodology checklist with localStorage-persisted progress
    ========================================================================= */
@@ -15,7 +15,6 @@
 /* Each command: { id, category, title, command, why, lookfor, tags, custom } */
 
 const SEED_COMMANDS = [
-
   /* ------------------------- 01_RECON & WEB ENUM ------------------------- */
   {
     id: 'r1', category: 'recon',
@@ -646,26 +645,33 @@ const METHODOLOGY = [
 /* ===================== 3. STATE / STORAGE ===================== */
 
 const LS_KEYS = {
-  customCommands: 'cyberNotes.customCommands',
+  allCommands: 'cyberNotes.allCommands',
   checklistProgress: 'cyberNotes.checklistProgress',
   theme: 'cyberNotes.theme',
 };
 
-function loadCustomCommands() {
+// LOAD ALL COMMANDS (Termasuk bawaan, simpan ke local storage jika belum ada)
+function loadAllCommands() {
   try {
-    const raw = localStorage.getItem(LS_KEYS.customCommands);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(LS_KEYS.allCommands);
+    if (raw) {
+      return JSON.parse(raw);
+    }
   } catch (e) {
-    console.error('Failed to load custom commands', e);
-    return [];
+    console.error('Failed to load commands', e);
   }
+  
+  // Jika kosong (pertama kali buka), copy data dari SEED_COMMANDS
+  const clonedSeeds = JSON.parse(JSON.stringify(SEED_COMMANDS));
+  localStorage.setItem(LS_KEYS.allCommands, JSON.stringify(clonedSeeds));
+  return clonedSeeds;
 }
 
-function saveCustomCommands(list) {
+function saveAllCommands(list) {
   try {
-    localStorage.setItem(LS_KEYS.customCommands, JSON.stringify(list));
+    localStorage.setItem(LS_KEYS.allCommands, JSON.stringify(list));
   } catch (e) {
-    console.error('Failed to save custom commands', e);
+    console.error('Failed to save commands', e);
   }
 }
 
@@ -674,7 +680,6 @@ function loadChecklistProgress() {
     const raw = localStorage.getItem(LS_KEYS.checklistProgress);
     return raw ? JSON.parse(raw) : {};
   } catch (e) {
-    console.error('Failed to load checklist progress', e);
     return {};
   }
 }
@@ -682,23 +687,16 @@ function loadChecklistProgress() {
 function saveChecklistProgress(state) {
   try {
     localStorage.setItem(LS_KEYS.checklistProgress, JSON.stringify(state));
-  } catch (e) {
-    console.error('Failed to save checklist progress', e);
-  }
+  } catch (e) {}
 }
 
-let customCommands = loadCustomCommands();
+let activeCommands = loadAllCommands();
 let checklistProgress = loadChecklistProgress();
 let currentFilter = 'all';
 let currentSearch = '';
+let editingCmdId = null;
 
 /* ===================== 4. UTILITIES ===================== */
-
-function escapeAttr(str) {
-  return String(str).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
 
 function showToast(msg) {
   const toast = document.getElementById('toast');
@@ -720,15 +718,10 @@ function catLabel(cat) {
 
 /* ===================== 5. RENDER: COMMAND CENTER ===================== */
 
-function getAllCommands() {
-  return [...SEED_COMMANDS, ...customCommands];
-}
-
 function getFilteredCommands() {
-  const all = getAllCommands();
   const q = currentSearch.trim().toLowerCase();
 
-  return all.filter(cmd => {
+  return activeCommands.filter(cmd => {
     // category filter
     if (currentFilter === 'custom' && !cmd.custom) return false;
     if (currentFilter !== 'all' && currentFilter !== 'custom' && cmd.category !== currentFilter) return false;
@@ -748,7 +741,6 @@ function renderCommandGrid() {
   const list = getFilteredCommands();
 
   grid.textContent = ''; // clear safely
-
   countEl.textContent = `${list.length} command${list.length === 1 ? '' : 's'} found`;
 
   if (list.length === 0) {
@@ -772,14 +764,13 @@ function buildCommandCard(cmd) {
   top.className = 'card-top';
 
   const h3 = document.createElement('h3');
-  h3.textContent = cmd.title; // textContent only -> XSS-safe
+  h3.textContent = cmd.title;
   top.appendChild(h3);
 
   const tag = document.createElement('span');
   tag.className = 'cat-tag';
   tag.textContent = cmd.custom ? '★ CUSTOM · ' + catLabel(cmd.category) : catLabel(cmd.category);
   top.appendChild(tag);
-
   card.appendChild(top);
 
   // code box
@@ -787,7 +778,7 @@ function buildCommandCard(cmd) {
   codeBox.className = 'code-box';
 
   const pre = document.createElement('pre');
-  pre.textContent = cmd.command; // textContent -> safe against injected HTML
+  pre.textContent = cmd.command;
   codeBox.appendChild(pre);
 
   const copyBtn = document.createElement('button');
@@ -796,7 +787,6 @@ function buildCommandCard(cmd) {
   copyBtn.textContent = '[COPY]';
   copyBtn.addEventListener('click', () => copyCommand(cmd.command, copyBtn));
   codeBox.appendChild(copyBtn);
-
   card.appendChild(codeBox);
 
   // WHY
@@ -830,18 +820,25 @@ function buildCommandCard(cmd) {
     card.appendChild(tagsRow);
   }
 
-  // footer / delete (only for custom commands)
-  if (cmd.custom) {
-    const footer = document.createElement('div');
-    footer.className = 'card-footer';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'delete-btn';
-    delBtn.type = 'button';
-    delBtn.textContent = '[DELETE]';
-    delBtn.addEventListener('click', () => deleteCustomCommand(cmd.id));
-    footer.appendChild(delBtn);
-    card.appendChild(footer);
-  }
+  // Footer dengan tombol EDIT dan DELETE untuk SEMUA command
+  const footer = document.createElement('div');
+  footer.className = 'card-footer';
+  
+  const editBtn = document.createElement('button');
+  editBtn.className = 'edit-btn';
+  editBtn.type = 'button';
+  editBtn.textContent = '[EDIT]';
+  editBtn.addEventListener('click', () => openAddModal(cmd));
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delete-btn';
+  delBtn.type = 'button';
+  delBtn.textContent = '[DELETE]';
+  delBtn.addEventListener('click', () => deleteCommand(cmd.id));
+  
+  footer.appendChild(editBtn);
+  footer.appendChild(delBtn);
+  card.appendChild(footer);
 
   return card;
 }
@@ -850,14 +847,13 @@ async function copyCommand(text, btnEl) {
   try {
     await navigator.clipboard.writeText(text);
   } catch (e) {
-    // fallback for older/blocked clipboard API
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); } catch (err) { console.error(err); }
+    try { document.execCommand('copy'); } catch (err) {}
     document.body.removeChild(ta);
   }
   const original = btnEl.textContent;
@@ -867,24 +863,44 @@ async function copyCommand(text, btnEl) {
   showToast('Command copied to clipboard');
 }
 
-function deleteCustomCommand(id) {
-  if (!confirm('Delete this custom command? This cannot be undone.')) return;
-  customCommands = customCommands.filter(c => c.id !== id);
-  saveCustomCommands(customCommands);
+function deleteCommand(id) {
+  if (!confirm('Delete this command? This cannot be undone.')) return;
+  activeCommands = activeCommands.filter(c => c.id !== id);
+  saveAllCommands(activeCommands);
   renderCommandGrid();
   showToast('Command deleted');
 }
 
-/* ===================== 6. ADD COMMAND MODAL ===================== */
+/* ===================== 6. ADD / EDIT COMMAND MODAL ===================== */
 
-function openAddModal() {
-  document.getElementById('add-modal').classList.add('open');
+function openAddModal(cmdToEdit = null) {
+  const modal = document.getElementById('add-modal');
+  const titleEl = modal.querySelector('h2');
+
+  if (cmdToEdit && cmdToEdit.id) {
+    editingCmdId = cmdToEdit.id;
+    if(titleEl) titleEl.textContent = 'Edit Command';
+
+    document.getElementById('f-title').value = cmdToEdit.title;
+    document.getElementById('f-category').value = cmdToEdit.category;
+    document.getElementById('f-command').value = cmdToEdit.command;
+    document.getElementById('f-why').value = cmdToEdit.why;
+    document.getElementById('f-lookfor').value = cmdToEdit.lookfor;
+    document.getElementById('f-tags').value = cmdToEdit.tags ? cmdToEdit.tags.join(', ') : '';
+  } else {
+    editingCmdId = null;
+    if(titleEl) titleEl.textContent = 'Add Custom Command';
+    document.getElementById('add-command-form').reset();
+  }
+
+  modal.classList.add('open');
   document.getElementById('f-title').focus();
 }
 
 function closeAddModal() {
   document.getElementById('add-modal').classList.remove('open');
   document.getElementById('add-command-form').reset();
+  editingCmdId = null;
 }
 
 function handleAddCommandSubmit(e) {
@@ -906,19 +922,31 @@ function handleAddCommandSubmit(e) {
     ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 10)
     : [];
 
-  const newCmd = {
-    id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-    category, title, command, why, lookfor, tags,
-    custom: true
-  };
+  if (editingCmdId) {
+    // PROSES EDIT DATA
+    const cmdIndex = activeCommands.findIndex(c => c.id === editingCmdId);
+    if (cmdIndex > -1) {
+      activeCommands[cmdIndex] = {
+        ...activeCommands[cmdIndex],
+        category, title, command, why, lookfor, tags
+      };
+      showToast('Command updated successfully');
+    }
+  } else {
+    // PROSES TAMBAH DATA BARU
+    const newCmd = {
+      id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      category, title, command, why, lookfor, tags,
+      custom: true
+    };
+    activeCommands.push(newCmd);
+    showToast('Command saved to local storage');
+  }
 
-  customCommands.push(newCmd);
-  saveCustomCommands(customCommands);
+  saveAllCommands(activeCommands);
   closeAddModal();
-  currentFilter = 'custom';
   updateActiveFilterButton();
   renderCommandGrid();
-  showToast('Command saved to local storage');
 }
 
 /* ===================== 7. FILTERS / SEARCH ===================== */
@@ -948,6 +976,7 @@ function initFilters() {
     }, 120);
   });
 }
+
 
 /* ===================== 8. RENDER: METHODOLOGY / CHECKLIST ===================== */
 
@@ -1025,7 +1054,6 @@ function buildCheckItem(item, phaseId) {
 
   const detail = document.createElement('div');
   detail.className = 'check-detail';
-  // detail contains a few trusted <code>/<b> tags authored by us (not user input) — safe to use innerHTML here
   detail.innerHTML = item.detail;
   wrap.appendChild(detail);
 
@@ -1108,7 +1136,7 @@ function initTheme() {
 /* ===================== 11. INIT ===================== */
 
 function initModal() {
-  document.getElementById('add-command-btn').addEventListener('click', openAddModal);
+  document.getElementById('add-command-btn').addEventListener('click', () => openAddModal());
   document.getElementById('cancel-add-btn').addEventListener('click', closeAddModal);
   document.getElementById('add-command-form').addEventListener('submit', handleAddCommandSubmit);
   document.getElementById('add-modal').addEventListener('click', (e) => {
@@ -1131,3 +1159,27 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* ===================== 12. TYPEWRITER EFFECT ===================== */
+
+const text = "root@bun4Ted1:~$ ";
+const element = document.getElementById("typewriter");
+let index = 0;
+
+function typeWriter() {
+  if (!element) return;
+  
+  // Jika belum selesai mengetik, teruskan pengetikan
+  if (index < text.length) {
+    element.innerHTML += text.charAt(index);
+    index++;
+    setTimeout(typeWriter, 150); // Kecepatan mengetik dalam milidetik
+  } 
+  // Bagian else (looping) sudah dihapus sepenuhnya sehingga efek akan BERHENTI di sini.
+}
+
+// Pastikan teks dikosongkan dulu saat halaman direfresh
+if (element) {
+  element.innerHTML = "";
+  typeWriter();
+}
