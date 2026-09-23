@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>cybersecurity-notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-left">
+    <span class="prompt">root@pentest:~$</span>
+    <h1 id="quote-line">Grind, Learn, Pwn. Keep pushing the limits.</h1>
+  </div>
+
+  <div class="header-right">
+    <nav class="view-switch">
+      <button class="nav-btn active" data-view="commands">[ Command_Center ]</button>
+      <button class="nav-btn" data-view="methodology">[ Methodology ]</button>
+    </nav>
+    <div class="theme-switcher" id="theme-switcher">
+      <button class="theme-toggle" id="theme-toggle" aria-label="Theme">🎨</button>
+      <div class="theme-dropdown" id="theme-dropdown">
+        <button data-theme="violet"><span class="swatch" style="background:#a955ff"></span>Electric Violet</button>
+        <button data-theme="green"><span class="swatch" style="background:#00ff66"></span>Matrix Green</button>
+        <button data-theme="cyan"><span class="swatch" style="background:#00d2ff"></span>Cyber Cyan</button>
+        <button data-theme="amber"><span class="swatch" style="background:#ffb000"></span>Terminal Amber</button>
+        <button data-theme="red"><span class="swatch" style="background:#ff2a6d"></span>Laser Red</button>
+        <button data-theme="pink"><span class="swatch" style="background:#ff6ec7"></span>Neon Pink</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== VIEW 1: COMMAND CENTER ===================== -->
+<main id="view-commands" class="view active-view">
+
+  <div class="toolbar">
+    <input type="text" id="search-input" placeholder="&gt; grep -i 'search commands, tags, why...'" autocomplete="off">
+    <button id="add-command-btn" class="btn-primary">[+ ADD_COMMAND]</button>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-btn active" data-cat="all">ALL</button>
+    <button class="filter-btn" data-cat="recon">01_RECON &amp; WEB ENUM</button>
+    <button class="filter-btn" data-cat="ad">02_ACTIVE DIRECTORY</button>
+    <button class="filter-btn" data-cat="privesc">03_PRIVILEGE ESCALATION</button>
+    <button class="filter-btn" data-cat="webapp">04_WEBAPP / API</button>
+  </div>
+
+  <div class="results-count" id="results-count"></div>
+
+  <div id="command-grid" class="command-grid"></div>
+</main>
+
+<!-- ===================== VIEW 2: METHODOLOGY ===================== -->
+<main id="view-methodology" class="view">
+  <div class="methodology-header">
+    <h2>// METHODOLOGY &amp; CHECKLIST</h2>
+    <div class="progress-wrap">
+      <div class="progress-bar-outer"><div class="progress-bar-inner" id="progress-bar-inner"></div></div>
+      <span id="progress-text">0 / 0 completed</span>
+      <button id="reset-checklist-btn" class="btn-secondary">[RESET]</button>
+    </div>
+  </div>
+  <div id="checklist-container"></div>
+</main>
+
+<!-- ===================== ADD COMMAND MODAL ===================== -->
+<div id="add-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">// ADD_MANUAL_COMMAND</div>
+    <form id="add-command-form">
+      <label>TITLE</label>
+      <input type="text" id="f-title" required placeholder="e.g. Kerberoast all users">
+
+      <label>CATEGORY</label>
+      <select id="f-category" required>
+        <option value="recon">01_RECON &amp; WEB ENUM</option>
+        <option value="ad">02_ACTIVE DIRECTORY</option>
+        <option value="privesc">03_PRIVILEGE ESCALATION</option>
+        <option value="webapp">04_WEBAPP / API</option>
+      </select>
+
+      <label>COMMAND</label>
+      <textarea id="f-command" required rows="3" placeholder="nxc smb 10.10.10.10 -u users.txt -p 'Password1' ..."></textarea>
+
+      <label>WHY?</label>
+      <textarea id="f-why" required rows="2" placeholder="Explain what this command does and why you run it"></textarea>
+
+      <label>LOOK FOR</label>
+      <textarea id="f-lookfor" required rows="2" placeholder="What output / vuln signals to look for"></textarea>
+
+      <label>TAGS (comma separated)</label>
+      <input type="text" id="f-tags" placeholder="smb, kerberos, enum">
+
+      <div class="modal-actions">
+        <button type="button" id="cancel-add-btn" class="btn-secondary">CANCEL</button>
+        <button type="submit" class="btn-primary">SAVE</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
