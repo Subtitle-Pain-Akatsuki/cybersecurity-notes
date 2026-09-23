@@ -41,45 +41,70 @@ html, body {
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* ===================== HEADER ===================== */
-.site-header {
+ .site-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; 
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 18px 28px;
-  background: var(--bg-alt);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  padding: 10px 20px;
+  background-color: #1a1b26; /* Sesuaikan dengan warna background kamu */
 }
 
-.header-left { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-
-.prompt { color: var(--accent); font-weight: bold; white-space: nowrap; }
-
-.site-header h1 {
-  font-size: 1rem;
-  font-weight: 400;
-  margin: 0;
-  color: var(--text-main);
-  letter-spacing: 0.3px;
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px; /* Jarak antara navigasi dan ikon tema */
 }
 
-.header-right { display: flex; align-items: center; gap: 14px; }
+----------------
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Jarak antara tombol Command Center dan Methodology */
+}
 
-.view-switch { display: flex; gap: 8px; }
+/* Menjaga area ikon lukis dan dropdown */
+.theme-switcher {
+  position: relative; /* Penting agar .theme-dropdown bisa diposisikan absolute terhadap tombol ini */
+  display: flex;
+  align-items: center;
+}
 
+/* Styling dasar tombol (opsional, sesuaikan dengan desainmu) */
 .nav-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  padding: 8px 12px;
+  background: none;
+  border: 1px solid #c0caf5;
+  color: #c0caf5;
+  padding: 5px 10px;
   cursor: pointer;
-  font-size: 0.82rem;
-  transition: all 0.15s;
+  border-radius: 4px;
+}
+
+/* ===================== TYPEWRITER / PROMPT ===================== */
+.header-left { 
+  display: flex; 
+  align-items: center; 
+  gap: 2px; /* Jarak antara teks dan kursor */
+  flex-wrap: wrap; 
+}
+
+.prompt {
+  display: inline-block; 
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--accent); /* Otomatis mengikuti warna tema */
+  transition: color 0.3s ease; /* Transisi warna halus saat tema diganti */
+}
+
+.cursor {
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--accent); /* Otomatis mengikuti warna tema */
+  animation: blink 1s infinite;
+  transition: color 0.3s ease;
+}
+
+/* Animasi kursor berkedip saja, animasi width (typing) dihapus agar tidak bentrok dengan JS */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
 .nav-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 8px var(--accent-glow); }
@@ -270,19 +295,41 @@ html, body {
   padding: 2px 7px;
 }
 
-.card-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
-.delete-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.68rem;
-  cursor: pointer;
-  font-family: var(--font-mono);
+/* Styling untuk area bawah (footer) pada Command Card */
+.card-footer {
+  display: flex;
+  justify-content: flex-end; /* Memindahkan tombol ke kanan */
+  gap: 10px; /* Jarak antar tombol */
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.2); /* Garis batas */
 }
-.delete-btn:hover { color: var(--danger); }
 
-.empty-state { text-align: center; color: var(--text-dim); padding: 60px 20px; font-size: 0.9rem; }
+/* Styling dasar tombol Edit & Delete */
+.edit-btn, .delete-btn {
+  background: none;
+  border: 1px solid #8aa2c7;
+  color: #8aa2c7;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
 
+/* Efek Hover (Warna menyala ala terminal) */
+.edit-btn:hover {
+  color: #00d2ff; /* Cyber Cyan */
+  border-color: #00d2ff;
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.4);
+}
+
+.delete-btn:hover {
+  color: #ff2a6d; /* Laser Red */
+  border-color: #ff2a6d;
+  box-shadow: 0 0 8px rgba(255, 42, 109, 0.4);
+}
 /* ===================== METHODOLOGY VIEW ===================== */
 .methodology-header {
   display: flex;
@@ -405,4 +452,14 @@ html, body {
   .command-grid { grid-template-columns: 1fr; }
   .view { padding: 18px 16px 50px; }
   .site-header h1 { font-size: 0.85rem; }
+}
+
+.cursor {
+  font-family: 'Courier New', Courier, monospace;
+  color: #00ff00;
+  animation: blink 1s infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
