@@ -640,54 +640,69 @@ const METHODOLOGY = [
       },
     ]
   },
+
+
 ];
 
 /* ===================== 3. STATE / STORAGE ===================== */
 
 const LS_KEYS = {
-  allCommands: 'cyberNotes.allCommands',
-  checklistProgress: 'cyberNotes.checklistProgress',
-  theme: 'cyberNotes.theme',
+  allCommands: 'cyberNotes.allCommands.v2',
+  checklistProgress: 'cyberNotes.checklistProgress.v2',
+  theme: 'cyberNotes.theme.v2',
+  dataVersion: 'cyberNotes.dataVersion'
 };
+const DATA_VERSION = 2;
 
-// LOAD ALL COMMANDS (Termasuk bawaan, simpan ke local storage jika belum ada)
+function safeClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function loadAllCommands() {
   try {
     const raw = localStorage.getItem(LS_KEYS.allCommands);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
-    console.error('Failed to load commands', e);
+    console.warn('Penyimpanan lokal command tidak dapat dibaca:', e);
   }
-  
-  // Jika kosong (pertama kali buka), copy data dari SEED_COMMANDS
-  const clonedSeeds = JSON.parse(JSON.stringify(SEED_COMMANDS));
-  localStorage.setItem(LS_KEYS.allCommands, JSON.stringify(clonedSeeds));
-  return clonedSeeds;
+
+  const seeded = safeClone(SEED_COMMANDS);
+  try {
+    localStorage.setItem(LS_KEYS.allCommands, JSON.stringify(seeded));
+    localStorage.setItem(LS_KEYS.dataVersion, String(DATA_VERSION));
+  } catch (e) {
+    console.warn('Penyimpanan lokal tidak tersedia:', e);
+  }
+  return seeded;
 }
 
 function saveAllCommands(list) {
+  if (!Array.isArray(list)) return false;
   try {
     localStorage.setItem(LS_KEYS.allCommands, JSON.stringify(list));
+    localStorage.setItem(LS_KEYS.dataVersion, String(DATA_VERSION));
+    return true;
   } catch (e) {
-    console.error('Failed to save commands', e);
+    console.error('Gagal menyimpan command:', e);
+    showToast('Penyimpanan lokal penuh atau diblokir');
+    return false;
   }
 }
 
 function loadChecklistProgress() {
   try {
     const raw = localStorage.getItem(LS_KEYS.checklistProgress);
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) {
-    return {};
-  }
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) { return {}; }
 }
 
 function saveChecklistProgress(state) {
-  try {
-    localStorage.setItem(LS_KEYS.checklistProgress, JSON.stringify(state));
-  } catch (e) {}
+  try { localStorage.setItem(LS_KEYS.checklistProgress, JSON.stringify(state)); }
+  catch (e) { console.warn('Gagal menyimpan progres checklist'); }
 }
 
 let activeCommands = loadAllCommands();
@@ -695,6 +710,7 @@ let checklistProgress = loadChecklistProgress();
 let currentFilter = 'all';
 let currentSearch = '';
 let editingCmdId = null;
+
 
 /* ===================== 4. UTILITIES ===================== */
 
@@ -741,7 +757,7 @@ function renderCommandGrid() {
   const list = getFilteredCommands();
 
   grid.textContent = ''; // clear safely
-  countEl.textContent = `${list.length} command${list.length === 1 ? '' : 's'} found`;
+  countEl.textContent = `${list.length} command ditemukan`;
 
   if (list.length === 0) {
     const empty = document.createElement('div');
@@ -833,7 +849,7 @@ function buildCommandCard(cmd) {
   const delBtn = document.createElement('button');
   delBtn.className = 'delete-btn';
   delBtn.type = 'button';
-  delBtn.textContent = '[DELETE]';
+  delBtn.textContent = '[HAPUS]';
   delBtn.addEventListener('click', () => deleteCommand(cmd.id));
   
   footer.appendChild(editBtn);
@@ -844,38 +860,53 @@ function buildCommandCard(cmd) {
 }
 
 async function copyCommand(text, btnEl) {
+  let copied = false;
   try {
-    await navigator.clipboard.writeText(text);
-  } catch (e) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (e) { /* fallback */ }
+
+  if (!copied) {
     const ta = document.createElement('textarea');
     ta.value = text;
+    ta.setAttribute('readonly', '');
     ta.style.position = 'fixed';
-    ta.style.opacity = '0';
+    ta.style.left = '-9999px';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); } catch (err) {}
-    document.body.removeChild(ta);
+    try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+    ta.remove();
   }
+
+  if (!copied) {
+    showToast('Gagal menyalin command');
+    return;
+  }
+
   const original = btnEl.textContent;
-  btnEl.textContent = '[COPIED]';
+  btnEl.textContent = '[TERSALIN]';
   btnEl.classList.add('copied');
   setTimeout(() => { btnEl.textContent = original; btnEl.classList.remove('copied'); }, 1200);
-  showToast('Command copied to clipboard');
+  showToast('Command disalin ke clipboard');
 }
 
 function deleteCommand(id) {
   if (!confirm('Delete this command? This cannot be undone.')) return;
   activeCommands = activeCommands.filter(c => c.id !== id);
   saveAllCommands(activeCommands);
+  if (editingCmdId === id) editingCmdId = null;
   renderCommandGrid();
-  showToast('Command deleted');
+  updateActiveFilterButton();
+  showToast('Command dihapus');
 }
 
 /* ===================== 6. ADD / EDIT COMMAND MODAL ===================== */
 
 function openAddModal(cmdToEdit = null) {
   const modal = document.getElementById('add-modal');
-  const titleEl = modal.querySelector('h2');
+  const titleEl = document.getElementById('modal-title');
 
   if (cmdToEdit && cmdToEdit.id) {
     editingCmdId = cmdToEdit.id;
@@ -889,16 +920,19 @@ function openAddModal(cmdToEdit = null) {
     document.getElementById('f-tags').value = cmdToEdit.tags ? cmdToEdit.tags.join(', ') : '';
   } else {
     editingCmdId = null;
-    if(titleEl) titleEl.textContent = 'Add Custom Command';
+    if(titleEl) titleEl.textContent = 'Tambah Command Manual';
     document.getElementById('add-command-form').reset();
   }
 
   modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
   document.getElementById('f-title').focus();
 }
 
 function closeAddModal() {
-  document.getElementById('add-modal').classList.remove('open');
+  const modal = document.getElementById('add-modal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
   document.getElementById('add-command-form').reset();
   editingCmdId = null;
 }
@@ -914,13 +948,19 @@ function handleAddCommandSubmit(e) {
   const tagsRaw = document.getElementById('f-tags').value.trim();
 
   if (!title || !command || !why || !lookfor) {
-    showToast('Please fill in all required fields');
+    showToast('Semua kolom wajib harus diisi');
     return;
   }
 
   const tags = tagsRaw
-    ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 10)
+    ? [...new Set(tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))].slice(0, 10)
     : [];
+
+  const allowedCategories = new Set(['recon','ad','privesc','webapp','cloud','container','advanced','expert']);
+  if (!allowedCategories.has(category) || title.length > 120 || command.length > 4000) {
+    showToast('Data command tidak valid');
+    return;
+  }
 
   if (editingCmdId) {
     // PROSES EDIT DATA
@@ -930,7 +970,7 @@ function handleAddCommandSubmit(e) {
         ...activeCommands[cmdIndex],
         category, title, command, why, lookfor, tags
       };
-      showToast('Command updated successfully');
+      showToast('Command berhasil diperbarui');
     }
   } else {
     // PROSES TAMBAH DATA BARU
@@ -940,7 +980,7 @@ function handleAddCommandSubmit(e) {
       custom: true
     };
     activeCommands.push(newCmd);
-    showToast('Command saved to local storage');
+    showToast('Command disimpan di penyimpanan lokal');
   }
 
   saveAllCommands(activeCommands);
@@ -977,112 +1017,75 @@ function initFilters() {
   });
 }
 
-
-/* ===================== 8. RENDER: METHODOLOGY / CHECKLIST ===================== */
-
-function totalChecklistItems() {
-  return METHODOLOGY.reduce((sum, phase) => sum + phase.items.length, 0);
-}
-
-function completedChecklistItems() {
-  return Object.values(checklistProgress).filter(Boolean).length;
-}
-
-function updateProgressBar() {
-  const total = totalChecklistItems();
-  const done = completedChecklistItems();
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  document.getElementById('progress-bar-inner').style.width = pct + '%';
-  document.getElementById('progress-text').textContent = `${done} / ${total} completed (${pct}%)`;
-}
+/* ===================== 8. RENDER: METHODOLOGY ===================== */
 
 function renderMethodology() {
   const container = document.getElementById('checklist-container');
-  container.textContent = '';
+  if (!container) return;
+  container.textContent = ''; // Bersihkan kontainer
 
   METHODOLOGY.forEach(phase => {
     const block = document.createElement('div');
     block.className = 'phase-block';
 
+    // Judul Fase
     const titleBar = document.createElement('div');
     titleBar.className = 'phase-title';
-
     const titleSpan = document.createElement('span');
     titleSpan.textContent = phase.title;
     titleBar.appendChild(titleSpan);
-
-    const doneCount = phase.items.filter(it => checklistProgress[it.id]).length;
-    const countSpan = document.createElement('span');
-    countSpan.className = 'phase-count';
-    countSpan.id = 'phase-count-' + phase.id;
-    countSpan.textContent = `${doneCount} / ${phase.items.length}`;
-    titleBar.appendChild(countSpan);
-
+    
+    // Hapus span count phase yang lama
     block.appendChild(titleBar);
 
+    // Isi Item (Tanpa Checkbox, Murni Teks)
     phase.items.forEach(item => {
-      block.appendChild(buildCheckItem(item, phase.id));
+      const wrap = document.createElement('div');
+      wrap.className = 'check-item'; // Pinjam styling check-item agar rapi
+
+      const head = document.createElement('div');
+      head.className = 'check-item-head';
+      
+      const label = document.createElement('label');
+      label.textContent = item.label;
+      head.appendChild(label);
+      wrap.appendChild(head);
+
+      const detail = document.createElement('div');
+      detail.className = 'check-detail';
+      detail.innerHTML = item.detail;
+      wrap.appendChild(detail);
+
+      block.appendChild(wrap);
     });
 
     container.appendChild(block);
   });
 
-  updateProgressBar();
+  updateChecklistProgress();
 }
-
-function buildCheckItem(item, phaseId) {
-  const wrap = document.createElement('div');
-  wrap.className = 'check-item' + (checklistProgress[item.id] ? ' done' : '');
-  wrap.dataset.id = item.id;
-
-  const head = document.createElement('div');
-  head.className = 'check-item-head';
-
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.id = 'chk-' + item.id;
-  checkbox.checked = !!checklistProgress[item.id];
-  checkbox.addEventListener('change', () => toggleCheckItem(item.id, phaseId, checkbox.checked));
-
-  const label = document.createElement('label');
-  label.setAttribute('for', 'chk-' + item.id);
-  label.textContent = item.label;
-
-  head.appendChild(checkbox);
-  head.appendChild(label);
-  wrap.appendChild(head);
-
-  const detail = document.createElement('div');
-  detail.className = 'check-detail';
-  detail.innerHTML = item.detail;
-  wrap.appendChild(detail);
-
-  return wrap;
-}
-
-function toggleCheckItem(itemId, phaseId, isChecked) {
-  checklistProgress[itemId] = isChecked;
-  saveChecklistProgress(checklistProgress);
-
-  const itemEl = document.querySelector(`.check-item[data-id="${CSS.escape(itemId)}"]`);
-  if (itemEl) itemEl.classList.toggle('done', isChecked);
-
-  const phase = METHODOLOGY.find(p => p.id === phaseId);
-  if (phase) {
-    const doneCount = phase.items.filter(it => checklistProgress[it.id]).length;
-    const countEl = document.getElementById('phase-count-' + phaseId);
-    if (countEl) countEl.textContent = `${doneCount} / ${phase.items.length}`;
+function initChecklistControls() {
+  const container = document.getElementById('checklist-container');
+  const reset = document.getElementById('reset-checklist-btn');
+  if (container) {
+    container.addEventListener('click', (event) => {
+      const checkbox = event.target.closest('input[data-check-id]');
+      if (!checkbox) return;
+      checklistProgress[checkbox.dataset.checkId] = checkbox.checked;
+      saveChecklistProgress(checklistProgress);
+      checkbox.closest('.check-item')?.classList.toggle('done', checkbox.checked);
+      updateChecklistProgress();
+    });
   }
-
-  updateProgressBar();
-}
-
-function resetChecklist() {
-  if (!confirm('Reset ALL checklist progress? This cannot be undone.')) return;
-  checklistProgress = {};
-  saveChecklistProgress(checklistProgress);
-  renderMethodology();
-  showToast('Checklist progress reset');
+  if (reset) {
+    reset.addEventListener('click', () => {
+      if (!confirm('Reset semua progres checklist?')) return;
+      checklistProgress = {};
+      saveChecklistProgress(checklistProgress);
+      renderMethodology();
+      showToast('Progres checklist direset');
+    });
+  }
 }
 
 /* ===================== 9. VIEW SWITCHING ===================== */
@@ -1105,6 +1108,8 @@ function initNav() {
 /* ===================== 10. THEME SWITCHER ===================== */
 
 function applyTheme(theme) {
+  const allowedThemes = new Set(['violet','green','cyan','amber','red','pink']);
+  if (!allowedThemes.has(theme)) theme = 'violet';
   document.documentElement.setAttribute('data-theme', theme);
   try { localStorage.setItem(LS_KEYS.theme, theme); } catch (e) { /* ignore */ }
 }
@@ -1120,7 +1125,8 @@ function initTheme() {
 
   toggle.addEventListener('click', (e) => {
     e.stopPropagation();
-    dropdown.classList.toggle('open');
+    const open = dropdown.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', String(open));
   });
 
   dropdown.addEventListener('click', (e) => {
@@ -1128,9 +1134,10 @@ function initTheme() {
     if (!btn) return;
     applyTheme(btn.dataset.theme);
     dropdown.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
   });
 
-  document.addEventListener('click', () => dropdown.classList.remove('open'));
+  document.addEventListener('click', () => { dropdown.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); });
 }
 
 /* ===================== 11. INIT ===================== */
@@ -1152,34 +1159,74 @@ function init() {
   initTheme();
   initFilters();
   initModal();
-  document.getElementById('reset-checklist-btn').addEventListener('click', resetChecklist);
+  initChecklistControls();
 
   renderCommandGrid();
   renderMethodology();
 }
 
-document.addEventListener('DOMContentLoaded', init);
+init();
 
-/* ===================== 12. TYPEWRITER EFFECT ===================== */
 
-const text = "root@bun4Ted1:~$ ";
-const element = document.getElementById("typewriter");
-let index = 0;
+/* ===================== 12. TYPEWRITER LOOP ===================== */
+const TYPEWRITER_TEXT = 'root@bun4Ted1:~$ ';
+let typeWriterTimer = null;
 
-function typeWriter() {
-  if (!element) return;
-  
-  // Jika belum selesai mengetik, teruskan pengetikan
-  if (index < text.length) {
-    element.innerHTML += text.charAt(index);
-    index++;
-    setTimeout(typeWriter, 150); // Kecepatan mengetik dalam milidetik
-  } 
-  // Bagian else (looping) sudah dihapus sepenuhnya sehingga efek akan BERHENTI di sini.
+function initTypewriter() {
+  const el = document.getElementById('typewriter');
+  if (!el) return;
+  let index = 0;
+  let deleting = false;
+
+  const tick = () => {
+    if (document.hidden) {
+      typeWriterTimer = setTimeout(tick, 500);
+      return;
+    }
+
+    if (!deleting) {
+      el.textContent = TYPEWRITER_TEXT.slice(0, index + 1);
+      index += 1;
+      if (index >= TYPEWRITER_TEXT.length) {
+        deleting = true;
+        typeWriterTimer = setTimeout(tick, 1800);
+        return;
+      }
+      typeWriterTimer = setTimeout(tick, 90);
+      return;
+    }
+
+    el.textContent = TYPEWRITER_TEXT.slice(0, Math.max(0, index - 1));
+    index -= 1;
+    if (index <= 0) {
+      deleting = false;
+      typeWriterTimer = setTimeout(tick, 450);
+      return;
+    }
+    typeWriterTimer = setTimeout(tick, 55);
+  };
+
+  clearTimeout(typeWriterTimer);
+  el.textContent = '';
+  tick();
 }
 
-// Pastikan teks dikosongkan dulu saat halaman direfresh
-if (element) {
-  element.innerHTML = "";
-  typeWriter();
-}
+/* Sinkronisasi tab pada browser yang sama. Ini BUKAN sinkronisasi antar pengguna. */
+window.addEventListener('storage', (event) => {
+  if (event.key === LS_KEYS.allCommands) {
+    activeCommands = loadAllCommands();
+    renderCommandGrid();
+    showToast('Data command disinkronkan dari tab lain');
+  }
+  if (event.key === LS_KEYS.theme && event.newValue) {
+    document.documentElement.setAttribute('data-theme', event.newValue);
+  }
+});
+
+/* ===================== 13. INIT FINAL ===================== */
+const originalInit = init;
+init = function () {
+  originalInit();
+  initTypewriter();
+  updateChecklistProgress();
+};
